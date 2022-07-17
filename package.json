@@ -1,0 +1,37 @@
+{
+  "name": "@tgsnake/redis-session",
+  "version": "1.0.0",
+  "description": "Redis session for tgsnake for saving user login session to redis cache",
+  "main": "./lib/index.js",
+  "devDependencies": {
+    "@tgsnake/core": "./tgsnake-core-1.0.0.tgz",
+    "@types/node": "17.0.35",
+    "prettier": "2.6.2",
+    "ts-node": "10.8.0",
+    "typescript": "4.7.3"
+  },
+  "scripts": {
+    "dev": "ts-node ./test/index.ts",
+    "build": "tsc",
+    "build:license": "node ./generator/license",
+    "prepare": "yarn build",
+    "prettier": "NODE_OPTIONS=--max_old_space_size=4096 prettier -w ."
+  },
+  "homepage": "https://tgsnake.js.org",
+  "keywords": [
+    "tgsnake",
+    "redis",
+    "session"
+  ],
+  "bugs": "https://github.com/tgsnake/redis-session/issues",
+  "repository": "https://github.com/tgsnake/redis-session",
+  "author": "butthx",
+  "files": [
+    "lib/**/**"
+  ],
+  "license": "MIT",
+  "packageManager": "yarn@3.2.1",
+  "dependencies": {
+    "redis": "4.2.0"
+  }
+}
