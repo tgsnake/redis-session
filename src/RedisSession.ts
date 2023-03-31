@@ -1,6 +1,6 @@
 /**
  * tgsnake - Telegram MTProto framework for nodejs.
- * Copyright (C) 2022 butthx <https://github.com/butthx>
+ * Copyright (C) 2023 butthx <https://github.com/butthx>
  *
  * THIS FILE IS PART OF TGSNAKE
  *
@@ -241,9 +241,9 @@ export class RedisSession extends Storages.BaseSession {
  * Creating valid bytes from peer schema.
  * @param peer {Array} - Peer will be convert to bytes
  */
-export function buildBytesFromPeer(
+export async function buildBytesFromPeer(
   peer: [id: bigint, accessHash: bigint, type: string, username?: string, phoneNumber?: string]
-): Buffer {
+): Promise<Buffer> {
   let bytes = new Raws.BytesIO();
   let flags = 0;
   if (peer[3]) {
@@ -252,15 +252,15 @@ export function buildBytesFromPeer(
   if (peer[4]) {
     flags |= 1 << 5;
   }
-  bytes.write(Raws.Primitive.Int.write(flags));
-  bytes.write(Raws.Primitive.Long.write(peer[0]));
-  bytes.write(Raws.Primitive.Long.write(peer[1]));
-  bytes.write(Raws.Primitive.String.write(peer[2]));
+  bytes.write(await Raws.Primitive.Int.write(flags));
+  bytes.write(await Raws.Primitive.Long.write(peer[0]));
+  bytes.write(await Raws.Primitive.Long.write(peer[1]));
+  bytes.write(await Raws.Primitive.String.write(peer[2]));
   if (peer[3]) {
-    bytes.write(Raws.Primitive.String.write(peer[3]));
+    bytes.write(await Raws.Primitive.String.write(peer[3]));
   }
   if (peer[4]) {
-    bytes.write(Raws.Primitive.String.write(peer[4]));
+    bytes.write(await Raws.Primitive.String.write(peer[4]));
   }
   return bytes.buffer;
 }
@@ -268,21 +268,23 @@ export function buildBytesFromPeer(
  * Creating valid peer schema from bytes.
  * @param bytes {Buffer} - Bytes will be converted to peer schema.
  */
-export function buildPeerFromBytes(
+export async function buildPeerFromBytes(
   bytes: Buffer
-): [id: bigint, accessHash: bigint, type: string, username?: string, phoneNumber?: string] {
+): Promise<
+  [id: bigint, accessHash: bigint, type: string, username?: string, phoneNumber?: string]
+> {
   let b = new Raws.BytesIO(bytes);
   // @ts-ignore
   let results: Array<any> = [];
-  let flags = Raws.Primitive.Int.read(b);
-  results.push(Raws.Primitive.Long.read(b));
-  results.push(Raws.Primitive.Long.read(b));
-  results.push(Raws.Primitive.String.read(b));
+  let flags = await Raws.Primitive.Int.read(b);
+  results.push(await Raws.Primitive.Long.read(b));
+  results.push(await Raws.Primitive.Long.read(b));
+  results.push(await Raws.Primitive.String.read(b));
   if (flags & (1 << 4)) {
-    results.push(Raws.Primitive.String.read(b));
+    results.push(await Raws.Primitive.String.read(b));
   }
   if (flags & (1 << 5)) {
-    results.push(Raws.Primitive.String.read(b));
+    results.push(await Raws.Primitive.String.read(b));
   }
   return results as unknown as [
     id: bigint,
