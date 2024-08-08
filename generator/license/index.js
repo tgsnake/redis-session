@@ -1,6 +1,6 @@
 /**
  * tgsnake - Telegram MTProto framework for nodejs.
- * Copyright (C) 2023 butthx <https://github.com/butthx>
+ * Copyright (C) 2024 butthx <https://github.com/butthx>
  *
  * THIS FILE IS PART OF TGSNAKE
  *
@@ -38,6 +38,6 @@ function start(route) {
   }
 }
 console.log(
-  "--- WARNING!! ---\n\nTHIS ACTION WILL BE CHANGE COPYRIGHT YEAR IN ALL FILE.\nTHIS ACTION CAN'T BE CANCELLED!\n\n--- build:license ---"
+  "--- WARNING!! ---\n\nTHIS ACTION WILL BE CHANGE COPYRIGHT YEAR IN ALL FILE.\nTHIS ACTION CAN'T BE CANCELLED!\n\n--- build:license ---",
 );
 start(process.cwd());

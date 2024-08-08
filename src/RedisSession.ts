@@ -1,6 +1,6 @@
 /**
  * tgsnake - Telegram MTProto framework for nodejs.
- * Copyright (C) 2023 butthx <https://github.com/butthx>
+ * Copyright (C) 2024 butthx <https://github.com/butthx>
  *
  * THIS FILE IS PART OF TGSNAKE
  *
@@ -156,8 +156,8 @@ export class RedisSession extends Storages.BaseSession {
   }
   async updatePeers(
     peers: Array<
-      [id: bigint, accessHash: bigint, type: string, username?: string, phoneNumber?: string]
-    >
+      [id: bigint, accessHash: bigint, type: string, username?: Array<string>, phoneNumber?: string]
+    >,
   ) {
     await this._connect();
     const sessionName = `${this.sessionName}${this._sessionDelim}`;
@@ -167,11 +167,35 @@ export class RedisSession extends Storages.BaseSession {
       this._set(
         `${sessionName}peer${this._sessionDelim}${peer[0]}`,
         bytes.toString('hex'),
-        this._peerExp
+        this._peerExp,
       );
     }
   }
+  async updateSecretChats(chats: Array<Storages.SecretChat>) {
+    await this._connect();
+    const sessionName = `${this.sessionName}${this._sessionDelim}`;
+    Logger.debug(`Updating ${chats.length} secret chats`);
+    for (let chat of chats) {
+      let bytes = await buildBytesFromSecretChat(chat);
+      this._set(
+        `${sessionName}e2e${this._sessionDelim}${chat.id}`,
+        bytes.toString('hex'),
+        this._peerExp,
+      );
+    }
+  }
+  async getSecretChatById(id: number) {
+    await this._connect();
+    Logger.debug(`Getting secret chat by id: ${id}`);
+    const sessionName = `${this.sessionName}${this._sessionDelim}`;
+    let bytes = this._redisClient.get(`${sessionName}e2e${this._sessionDelim}${id}`);
+    if (bytes) {
+      let chat = await buildSecretChatFromBytes(Buffer.from(bytes, 'hex'));
+      return chat;
+    }
+  }
   async getPeerById(id: bigint) {
+    await this._connect();
     Logger.debug(`Getting peer by id: ${id}`);
     const sessionName = `${this.sessionName}${this._sessionDelim}`;
     let bytes = this._redisClient.get(`${sessionName}peer${this._sessionDelim}${id}`);
@@ -181,6 +205,7 @@ export class RedisSession extends Storages.BaseSession {
     }
   }
   async getPeerByUsername(username: string) {
+    await this._connect();
     Logger.debug(`Getting peer by username: ${username}`);
     const sessionName = `${this.sessionName}${this._sessionDelim}`;
     for (let key of this._redisClient.scanIterator()) {
@@ -188,7 +213,7 @@ export class RedisSession extends Storages.BaseSession {
         let bytes = await this._redisClient.get(key);
         if (bytes) {
           let peer = await buildPeerFromBytes(Buffer.from(bytes, 'hex'));
-          if (peer[3] && peer[3] === username) {
+          if (Array.isArray(peer[3]) && peer[3].includes(username.toLowerCase())) {
             return Storages.getInputPeer(peer[0], peer[1], peer[2]);
           }
         }
@@ -196,6 +221,7 @@ export class RedisSession extends Storages.BaseSession {
     }
   }
   async getPeerByPhoneNumber(phoneNumber: string) {
+    await this._connect();
     Logger.debug(`Getting peer by phone number: ${phoneNumber}`);
     const sessionName = `${this.sessionName}${this._sessionDelim}`;
     for (let key of this._redisClient.scanIterator()) {
@@ -209,6 +235,16 @@ export class RedisSession extends Storages.BaseSession {
         }
       }
     }
+  }
+  async removeSecretChatById(id: number) {
+    await this._connect();
+    Logger.debug(`Removing secret chat by id: ${id}`);
+    const sessionName = `${this.sessionName}${this._sessionDelim}`;
+    let bytes = this._redisClient.get(`${sessionName}e2e${this._sessionDelim}${id}`);
+    if (bytes) {
+      await this._redisClient.del(`${sessionName}e2e${this._sessionDelim}${id}`);
+    }
+    return true;
   }
   /**
    * Save content to Redis Cache.
@@ -241,56 +277,156 @@ export class RedisSession extends Storages.BaseSession {
  * Creating valid bytes from peer schema.
  * @param peer {Array} - Peer will be convert to bytes
  */
-export async function buildBytesFromPeer(
-  peer: [id: bigint, accessHash: bigint, type: string, username?: string, phoneNumber?: string]
-): Promise<Buffer> {
+export function buildBytesFromPeer(
+  peer: [
+    id: bigint,
+    accessHash: bigint,
+    type: string,
+    username?: Array<string>,
+    phoneNumber?: string,
+  ],
+): Buffer {
   let bytes = new Raws.BytesIO();
   let flags = 0;
-  if (peer[3]) {
+  if (peer[3] && peer[3].length) {
     flags |= 1 << 4;
   }
   if (peer[4]) {
     flags |= 1 << 5;
   }
-  bytes.write(await Raws.Primitive.Int.write(flags));
-  bytes.write(await Raws.Primitive.Long.write(peer[0]));
-  bytes.write(await Raws.Primitive.Long.write(peer[1]));
-  bytes.write(await Raws.Primitive.String.write(peer[2]));
-  if (peer[3]) {
-    bytes.write(await Raws.Primitive.String.write(peer[3]));
+  bytes.write(Raws.Primitive.Int.write(flags));
+  bytes.write(Raws.Primitive.Long.write(peer[0]));
+  bytes.write(Raws.Primitive.Long.write(peer[1]));
+  bytes.write(Raws.Primitive.String.write(peer[2]));
+  if (peer[3] && peer[3].length) {
+    bytes.write(Raws.Primitive.Vector.write(peer[3], Raws.Primitive.String));
   }
   if (peer[4]) {
-    bytes.write(await Raws.Primitive.String.write(peer[4]));
+    bytes.write(Raws.Primitive.String.write(peer[4]));
   }
-  return bytes.buffer;
+  return Buffer.concat([Buffer.from([2]), bytes.buffer]);
 }
 /**
  * Creating valid peer schema from bytes.
  * @param bytes {Buffer} - Bytes will be converted to peer schema.
  */
 export async function buildPeerFromBytes(
-  bytes: Buffer
+  bytes: Buffer,
 ): Promise<
-  [id: bigint, accessHash: bigint, type: string, username?: string, phoneNumber?: string]
+  [id: bigint, accessHash: bigint, type: string, username?: Array<string>, phoneNumber?: string]
 > {
-  let b = new Raws.BytesIO(bytes);
   // @ts-ignore
   let results: Array<any> = [];
-  let flags = await Raws.Primitive.Int.read(b);
-  results.push(await Raws.Primitive.Long.read(b));
-  results.push(await Raws.Primitive.Long.read(b));
-  results.push(await Raws.Primitive.String.read(b));
-  if (flags & (1 << 4)) {
+  if (bytes[0] === 2) {
+    let b = new Raws.BytesIO(bytes.slice(1));
+    let flags = await Raws.Primitive.Int.read(b);
+    results.push(await Raws.Primitive.Long.read(b));
+    results.push(await Raws.Primitive.Long.read(b));
     results.push(await Raws.Primitive.String.read(b));
-  }
-  if (flags & (1 << 5)) {
+    if (flags & (1 << 4)) {
+      results.push(await Raws.Primitive.String.read(b));
+    }
+    if (flags & (1 << 5)) {
+      results.push(await Raws.Primitive.String.read(b));
+    }
+  } else {
+    let b = new Raws.BytesIO(bytes);
+    let flags = await Raws.Primitive.Int.read(b);
+    results.push(await Raws.Primitive.Long.read(b));
+    results.push(await Raws.Primitive.Long.read(b));
     results.push(await Raws.Primitive.String.read(b));
+    if (flags & (1 << 4)) {
+      results.push([await Raws.Primitive.String.read(b)]);
+    }
+    if (flags & (1 << 5)) {
+      results.push(await Raws.Primitive.String.read(b));
+    }
   }
   return results as unknown as [
     id: bigint,
     accessHash: bigint,
     type: string,
-    username?: string,
-    phoneNumber?: string
+    username?: Array<string>,
+    phoneNumber?: string,
   ];
+}
+
+export function buildBytesFromSecretChat(secretChat: Storages.SecretChat): Buffer {
+  let bytes = new Raws.BytesIO();
+  let flags = 0;
+  if (secretChat.rekeyStep) {
+    flags |= 1 << 3;
+  }
+  if (secretChat.rekeyExchange) {
+    flags |= 1 << 4;
+  }
+  if (secretChat.adminId) {
+    flags |= 1 << 5;
+  }
+  if (secretChat.ttl) {
+    flags |= 1 << 6;
+  }
+  bytes.write(Raws.Primitive.Int.write(flags));
+  bytes.write(Raws.Primitive.Int.write(secretChat.id));
+  bytes.write(Raws.Primitive.Long.write(secretChat.accessHash));
+  bytes.write(Raws.Primitive.Bool.write(secretChat.isAdmin));
+  bytes.write(Raws.Primitive.Bytes.write(secretChat.authKey));
+  bytes.write(Raws.Primitive.Int.write(secretChat.mtproto));
+  bytes.write(Raws.Primitive.Int.write(secretChat.layer));
+  bytes.write(Raws.Primitive.Int.write(secretChat.inSeqNo));
+  bytes.write(Raws.Primitive.Int.write(secretChat.outSeqNo));
+  bytes.write(Raws.Primitive.Int.write(secretChat.inSeqNoX));
+  bytes.write(Raws.Primitive.Int.write(secretChat.outSeqNoX));
+  bytes.write(Raws.Primitive.Int.write(secretChat.timeRekey));
+  bytes.write(Raws.Primitive.Float.write(secretChat.created));
+  bytes.write(Raws.Primitive.Float.write(secretChat.changed));
+  if (secretChat.rekeyStep) {
+    bytes.write(Raws.Primitive.Int.write(secretChat.rekeyStep));
+  }
+  if (secretChat.rekeyExchange) {
+    bytes.write(Raws.Primitive.Long.write(secretChat.rekeyExchange));
+  }
+  if (secretChat.adminId) {
+    bytes.write(Raws.Primitive.Long.write(secretChat.adminId));
+  }
+  if (secretChat.ttl) {
+    bytes.write(Raws.Primitive.Int.write(secretChat.ttl));
+  }
+  return bytes.buffer;
+}
+export async function buildSecretChatFromBytes(bytes: Buffer): Promise<Storages.SecretChat> {
+  let b = new Raws.BytesIO(bytes);
+  let flags = await Raws.Primitive.Int.read(b);
+  const id = await Raws.Primitive.Int.read(b);
+  const accessHash = await Raws.Primitive.Long.read(b);
+  const isAdmin = await Raws.Primitive.Bool.read(b);
+  const authKey = await Raws.Primitive.Bytes.read(b);
+  let secretChat = new Storages.SecretChat({
+    id,
+    accessHash,
+    isAdmin,
+    authKey,
+  });
+  secretChat.mtproto = await Raws.Primitive.Int.read(b);
+  secretChat.layer = await Raws.Primitive.Int.read(b);
+  secretChat.inSeqNo = await Raws.Primitive.Int.read(b);
+  secretChat.outSeqNo = await Raws.Primitive.Int.read(b);
+  secretChat.inSeqNoX = await Raws.Primitive.Int.read(b);
+  secretChat.outSeqNoX = await Raws.Primitive.Int.read(b);
+  secretChat.timeRekey = await Raws.Primitive.Int.read(b);
+  secretChat.created = await Raws.Primitive.Float.read(b);
+  secretChat.changed = await Raws.Primitive.Float.read(b);
+  if (flags & (1 << 3)) {
+    secretChat.rekeyStep = await Raws.Primitive.Int.read(b);
+  }
+  if (flags & (1 << 4)) {
+    secretChat.rekeyExchange = await Raws.Primitive.Long.read(b);
+  }
+  if (flags & (1 << 5)) {
+    secretChat.adminId = await Raws.Primitive.Long.read(b);
+  }
+  if (flags & (1 << 6)) {
+    secretChat.ttl = await Raws.Primitive.Int.read(b);
+  }
+  return secretChat;
 }
