@@ -87,5 +87,3 @@ new RedisSession('session name', {
 ```
 
 > For more questions, ask on telegram group ([@tgsnake](https://t.me/tgsnake)) or open github issue.
-
-# MIT LICENSE
